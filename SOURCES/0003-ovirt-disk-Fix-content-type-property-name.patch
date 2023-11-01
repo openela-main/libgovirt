@@ -1,0 +1,40 @@
+From f49fb13abcc7d0c2fb8a2551913d9d5997997487 Mon Sep 17 00:00:00 2001
+From: "Eduardo Lima (Etrunko)" <etrunko@redhat.com>
+Date: Thu, 25 Jun 2020 13:39:50 -0300
+Subject: [PATCH] ovirt-disk: Fix content type property name
+
+Instead of using underscore, which is not accepted, make use of a dash,
+avoiding error messages like the following:
+
+GLib-CRITICAL **: g_param_spec_internal: assertion '!(flags & G_PARAM_STATIC_NAME) || is_canonical (name)' failed
+
+Signed-off-by: Eduardo Lima (Etrunko) <etrunko@redhat.com>
+---
+ govirt/ovirt-disk.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/govirt/ovirt-disk.c b/govirt/ovirt-disk.c
+index 9242c4c..4772002 100644
+--- a/govirt/ovirt-disk.c
++++ b/govirt/ovirt-disk.c
+@@ -77,7 +77,7 @@ static gboolean ovirt_disk_init_from_xml(OvirtResource *resource,
+     gboolean parsed_ok;
+     OvirtResourceClass *parent_class;
+     OvirtXmlElement disk_elements[] = {
+-        { .prop_name = "content_type",
++        { .prop_name = "content-type",
+           .xml_path = "content_type",
+         },
+         { NULL , }
+@@ -103,7 +103,7 @@ static void ovirt_disk_class_init(OvirtDiskClass *klass)
+     object_class->get_property = ovirt_disk_get_property;
+     object_class->set_property = ovirt_disk_set_property;
+ 
+-    param_spec = g_param_spec_enum("type",
++    param_spec = g_param_spec_enum("content-type",
+                                    "Content Type",
+                                    "The actual content residing on the disk",
+                                    OVIRT_TYPE_DISK_CONTENT_TYPE,
+-- 
+2.26.2
+

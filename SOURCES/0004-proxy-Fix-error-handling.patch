@@ -1,0 +1,77 @@
+From cb052b5df117e4d3d90fd0f7ee70d0e428d46250 Mon Sep 17 00:00:00 2001
+From: "Eduardo Lima (Etrunko)" <etrunko@redhat.com>
+Date: Tue, 22 Dec 2020 08:53:16 -0300
+Subject: [PATCH] proxy: Fix error handling
+
+Error returned by the task must be freed by the caller of the function.
+This avoids a double-free scenario, as reported by valgrind:
+
+Invalid free() / delete / delete[] / realloc()
+   at 0x483A9F5: free (vg_replace_malloc.c:538)
+   by 0x5A4C45C: g_free (in /usr/lib64/libglib-2.0.so.0.6600.3)
+   by 0x5A6673F: g_slice_free1 (in /usr/lib64/libglib-2.0.so.0.6600.3)
+   by 0x5A2CC09: g_clear_error (in /usr/lib64/libglib-2.0.so.0.6600.3)
+   by 0x56F43B7: rest_call_async_set_error (ovirt-proxy.c:245)
+   by 0x56F451A: call_async_cb (ovirt-proxy.c:265)
+   by 0x571AFC3: ??? (in /usr/lib64/librest-0.7.so.0.0.0)
+   by 0x5789593: ??? (in /usr/lib64/libsoup-2.4.so.1.11.0)
+   by 0x5789B82: ??? (in /usr/lib64/libsoup-2.4.so.1.11.0)
+   by 0x5789CD5: ??? (in /usr/lib64/libsoup-2.4.so.1.11.0)
+   by 0x5A468AA: ??? (in /usr/lib64/libglib-2.0.so.0.6600.3)
+   by 0x5A477EE: g_main_context_dispatch (in /usr/lib64/libglib-2.0.so.0.6600.3)
+ Address 0x17d731b0 is 0 bytes inside a block of size 16 free'd
+   at 0x483A9F5: free (vg_replace_malloc.c:538)
+   by 0x5A4C45C: g_free (in /usr/lib64/libglib-2.0.so.0.6600.3)
+   by 0x5A6673F: g_slice_free1 (in /usr/lib64/libglib-2.0.so.0.6600.3)
+   by 0x5A2CC09: g_clear_error (in /usr/lib64/libglib-2.0.so.0.6600.3)
+   by 0x43115A: ovirt_foreign_menu_iso_name_changed (remote-viewer-iso-list-dialog.c:358)
+   by 0x587A349: ??? (in /usr/lib64/libgio-2.0.so.0.6600.3)
+   by 0x587A58A: ??? (in /usr/lib64/libgio-2.0.so.0.6600.3)
+   by 0x4302F7: iso_name_set_cb (ovirt-foreign-menu.c:423)
+   by 0x587A349: ??? (in /usr/lib64/libgio-2.0.so.0.6600.3)
+   by 0x587A58A: ??? (in /usr/lib64/libgio-2.0.so.0.6600.3)
+   by 0x56F43AF: rest_call_async_set_error (ovirt-proxy.c:244)
+   by 0x56F451A: call_async_cb (ovirt-proxy.c:265)
+ Block was alloc'd at
+   at 0x4839809: malloc (vg_replace_malloc.c:307)
+   by 0x5A4F908: g_malloc (in /usr/lib64/libglib-2.0.so.0.6600.3)
+   by 0x5A671C1: g_slice_alloc (in /usr/lib64/libglib-2.0.so.0.6600.3)
+   by 0x5A33286: g_error_new_valist (in /usr/lib64/libglib-2.0.so.0.6600.3)
+   by 0x5A3348E: g_set_error (in /usr/lib64/libglib-2.0.so.0.6600.3)
+   by 0x56FB4D5: ovirt_utils_gerror_from_xml_fault (ovirt-utils.c:368)
+   by 0x56F4356: rest_call_async_set_error (ovirt-proxy.c:242)
+   by 0x56F451A: call_async_cb (ovirt-proxy.c:265)
+   by 0x571AFC3: ??? (in /usr/lib64/librest-0.7.so.0.0.0)
+   by 0x5789593: ??? (in /usr/lib64/libsoup-2.4.so.1.11.0)
+   by 0x5789B82: ??? (in /usr/lib64/libsoup-2.4.so.1.11.0)
+   by 0x5789CD5: ??? (in /usr/lib64/libsoup-2.4.so.1.11.0)
+
+Signed-off-by: Eduardo Lima (Etrunko) <etrunko@redhat.com>
+---
+ govirt/ovirt-proxy.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/govirt/ovirt-proxy.c b/govirt/ovirt-proxy.c
+index e2d2e5c..1cf1ebf 100644
+--- a/govirt/ovirt-proxy.c
++++ b/govirt/ovirt-proxy.c
+@@ -242,7 +242,6 @@ static void rest_call_async_set_error(RestProxyCall *call, GTask *task, const GE
+     if (root != NULL && ovirt_utils_gerror_from_xml_fault(root, &local_error)) {
+         g_debug("ovirt_rest_call_async(): %s", local_error->message);
+         g_task_return_error(task, local_error);
+-        g_clear_error(&local_error);
+     } else {
+         g_task_return_error(task, (GError *) error);
+     }
+@@ -272,7 +271,7 @@ call_async_cb(RestProxyCall *call, const GError *error,
+                                               data->call_user_data,
+                                               &call_error);
+         if (call_error != NULL) {
+-            rest_call_async_set_error(call, task, error);
++            rest_call_async_set_error(call, task, call_error);
+             goto exit;
+         }
+     }
+-- 
+2.29.2
+

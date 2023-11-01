@@ -1,0 +1,93 @@
+From 8ab1be89c70d0f6454e74442d382b9ea55f1df58 Mon Sep 17 00:00:00 2001
+From: "Eduardo Lima (Etrunko)" <etrunko@redhat.com>
+Date: Tue, 16 Jun 2020 10:07:49 -0300
+Subject: [PATCH] ovirt-storage-domain: Introduce
+ ovirt_storage_domain_get_disks()
+
+This function is used to return the list of disks in a given storage
+domain with DATA type.
+
+Signed-off-by: Eduardo Lima (Etrunko) <etrunko@redhat.com>
+---
+ govirt/govirt.sym             |  2 ++
+ govirt/ovirt-storage-domain.c | 28 ++++++++++++++++++++++++++++
+ govirt/ovirt-storage-domain.h |  1 +
+ 3 files changed, 31 insertions(+)
+
+diff --git a/govirt/govirt.sym b/govirt/govirt.sym
+index 1cc2a8e..4cd6bb8 100644
+--- a/govirt/govirt.sym
++++ b/govirt/govirt.sym
+@@ -146,5 +146,7 @@ GOVIRT_0.4.1 {
+         ovirt_disk_get_type;
+         ovirt_disk_content_type_get_type;
+         ovirt_disk_new;
++
++        ovirt_storage_domain_get_disks;
+ } GOVIRT_0.4.0;
+ # .... define new API here using predicted next version number ....
+diff --git a/govirt/ovirt-storage-domain.c b/govirt/ovirt-storage-domain.c
+index a713d89..d02c3d5 100644
+--- a/govirt/ovirt-storage-domain.c
++++ b/govirt/ovirt-storage-domain.c
+@@ -27,6 +27,7 @@
+ 
+ struct _OvirtStorageDomainPrivate {
+     OvirtCollection *files;
++    OvirtCollection *disks;
+     GStrv data_center_ids;
+ 
+     gchar *data_center_href;
+@@ -172,6 +173,7 @@ ovirt_storage_domain_dispose(GObject *obj)
+     OvirtStorageDomain *domain = OVIRT_STORAGE_DOMAIN(obj);
+ 
+     g_clear_object(&domain->priv->files);
++    g_clear_object(&domain->priv->disks);
+     g_clear_pointer(&domain->priv->data_center_ids, g_strfreev);
+     g_clear_pointer(&domain->priv->data_center_href, g_free);
+     g_clear_pointer(&domain->priv->data_center_id, g_free);
+@@ -399,3 +401,29 @@ OvirtCollection *ovirt_storage_domain_get_files(OvirtStorageDomain *domain)
+ 
+     return domain->priv->files;
+ }
++
++/**
++ * ovirt_storage_domain_get_disks:
++ * @domain: a #OvirtStorageDomain
++ *
++ * Gets a #OvirtCollection representing the list of remote disks from a
++ * storage domain object.  This method does not initiate any network
++ * activity, the remote file list must be then be fetched using
++ * ovirt_collection_fetch() or ovirt_collection_fetch_async().
++ *
++ * Return value: (transfer none): a #OvirtCollection representing the list
++ * of disks associated with @domain.
++ */
++OvirtCollection *ovirt_storage_domain_get_disks(OvirtStorageDomain *domain)
++{
++    g_return_val_if_fail(OVIRT_IS_STORAGE_DOMAIN(domain), NULL);
++
++    if (domain->priv->disks == NULL)
++        domain->priv->disks = ovirt_sub_collection_new_from_resource(OVIRT_RESOURCE(domain),
++                                                                     "disks",
++                                                                     "disks",
++                                                                     OVIRT_TYPE_DISK,
++                                                                     "disk");
++
++    return domain->priv->disks;
++}
+diff --git a/govirt/ovirt-storage-domain.h b/govirt/ovirt-storage-domain.h
+index f122e27..97cfb06 100644
+--- a/govirt/ovirt-storage-domain.h
++++ b/govirt/ovirt-storage-domain.h
+@@ -86,6 +86,7 @@ GType ovirt_storage_domain_get_type(void);
+ OvirtStorageDomain *ovirt_storage_domain_new(void);
+ 
+ OvirtCollection *ovirt_storage_domain_get_files(OvirtStorageDomain *domain);
++OvirtCollection *ovirt_storage_domain_get_disks(OvirtStorageDomain *domain);
+ 
+ G_END_DECLS
+ 
+-- 
+2.26.2
+

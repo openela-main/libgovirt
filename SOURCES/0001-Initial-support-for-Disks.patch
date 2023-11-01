@@ -1,0 +1,406 @@
+From 91089ba30f2345ee14be676ca8b7465d6f29871a Mon Sep 17 00:00:00 2001
+From: "Eduardo Lima (Etrunko)" <etrunko@redhat.com>
+Date: Tue, 16 Jun 2020 13:37:36 -0300
+Subject: [PATCH] Initial support for Disks
+
+Signed-off-by: Eduardo Lima (Etrunko) <etrunko@redhat.com>
+---
+ govirt/Makefile.am          |   3 +
+ govirt/govirt-private.h     |   1 +
+ govirt/govirt.h             |   1 +
+ govirt/govirt.sym           |   6 ++
+ govirt/meson.build          |   3 +
+ govirt/ovirt-disk-private.h |  37 +++++++++
+ govirt/ovirt-disk.c         | 144 ++++++++++++++++++++++++++++++++++++
+ govirt/ovirt-disk.h         |  76 +++++++++++++++++++
+ govirt/ovirt-types.h        |   1 +
+ 9 files changed, 272 insertions(+)
+ create mode 100644 govirt/ovirt-disk-private.h
+ create mode 100644 govirt/ovirt-disk.c
+ create mode 100644 govirt/ovirt-disk.h
+
+diff --git a/govirt/Makefile.am b/govirt/Makefile.am
+index 0ce276d..f7ab835 100644
+--- a/govirt/Makefile.am
++++ b/govirt/Makefile.am
+@@ -21,6 +21,7 @@ libgovirt_la_HEADERS =						\
+ 	ovirt-cluster.h						\
+ 	ovirt-collection.h					\
+ 	ovirt-data-center.h					\
++	ovirt-disk.h						\
+ 	ovirt-error.h						\
+ 	ovirt-host.h						\
+ 	ovirt-options.h						\
+@@ -41,6 +42,7 @@ noinst_HEADERS =						\
+ 	ovirt-cluster-private.h					\
+ 	ovirt-collection-private.h				\
+ 	ovirt-data-center-private.h				\
++	ovirt-disk-private.h					\
+ 	ovirt-host-private.h					\
+ 	ovirt-proxy-private.h					\
+ 	ovirt-resource-private.h				\
+@@ -58,6 +60,7 @@ libgovirt_la_SOURCES =						\
+ 	ovirt-cluster.c						\
+ 	ovirt-collection.c					\
+ 	ovirt-data-center.c					\
++	ovirt-disk.c						\
+ 	ovirt-error.c						\
+ 	ovirt-host.c						\
+ 	ovirt-options.c						\
+diff --git a/govirt/govirt-private.h b/govirt/govirt-private.h
+index 2c0e30f..f5cf721 100644
+--- a/govirt/govirt-private.h
++++ b/govirt/govirt-private.h
+@@ -27,6 +27,7 @@
+ #include <govirt/ovirt-cluster-private.h>
+ #include <govirt/ovirt-collection-private.h>
+ #include <govirt/ovirt-data-center-private.h>
++#include <govirt/ovirt-disk-private.h>
+ #include <govirt/ovirt-enum-types-private.h>
+ #include <govirt/ovirt-host-private.h>
+ #include <govirt/ovirt-proxy-private.h>
+diff --git a/govirt/govirt.h b/govirt/govirt.h
+index 9c92318..8eab984 100644
+--- a/govirt/govirt.h
++++ b/govirt/govirt.h
+@@ -28,6 +28,7 @@
+ #include <govirt/ovirt-cluster.h>
+ #include <govirt/ovirt-collection.h>
+ #include <govirt/ovirt-data-center.h>
++#include <govirt/ovirt-disk.h>
+ #include <govirt/ovirt-error.h>
+ #include <govirt/ovirt-host.h>
+ #include <govirt/ovirt-options.h>
+diff --git a/govirt/govirt.sym b/govirt/govirt.sym
+index 0d488e6..1cc2a8e 100644
+--- a/govirt/govirt.sym
++++ b/govirt/govirt.sym
+@@ -141,4 +141,10 @@ GOVIRT_0.4.0 {
+         ovirt_vm_get_host;
+         ovirt_vm_get_cluster;
+ } GOVIRT_0.3.4;
++
++GOVIRT_0.4.1 {
++        ovirt_disk_get_type;
++        ovirt_disk_content_type_get_type;
++        ovirt_disk_new;
++} GOVIRT_0.4.0;
+ # .... define new API here using predicted next version number ....
+diff --git a/govirt/meson.build b/govirt/meson.build
+index bec7781..778e5c0 100644
+--- a/govirt/meson.build
++++ b/govirt/meson.build
+@@ -7,6 +7,7 @@ govirt_headers = [
+   'ovirt-cluster.h',
+   'ovirt-collection.h',
+   'ovirt-data-center.h',
++  'ovirt-disk.h',
+   'ovirt-error.h',
+   'ovirt-host.h',
+   'ovirt-options.h',
+@@ -34,6 +35,7 @@ govirt_private_headers = [
+   'ovirt-cluster-private.h',
+   'ovirt-collection-private.h',
+   'ovirt-data-center-private.h',
++  'ovirt-disk-private.h',
+   'ovirt-host-private.h',
+   'ovirt-proxy-private.h',
+   'ovirt-resource-private.h',
+@@ -58,6 +60,7 @@ govirt_sources = [
+   'ovirt-cluster.c',
+   'ovirt-collection.c',
+   'ovirt-data-center.c',
++  'ovirt-disk.c',
+   'ovirt-error.c',
+   'ovirt-host.c',
+   'ovirt-options.c',
+diff --git a/govirt/ovirt-disk-private.h b/govirt/ovirt-disk-private.h
+new file mode 100644
+index 0000000..d9fff3f
+--- /dev/null
++++ b/govirt/ovirt-disk-private.h
+@@ -0,0 +1,37 @@
++/*
++ * ovirt-disk-private.h: oVirt disk resource
++ *
++ * Copyright (C) 2020 Red Hat, Inc.
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library. If not, see
++ * <http://www.gnu.org/licenses/>.
++ *
++ * Author: Eduardo Lima (Etrunko) <etrunko@redhat.com>
++ */
++#ifndef __OVIRT_DISK_PRIVATE_H__
++#define __OVIRT_DISK_PRIVATE_H__
++
++#include <govirt/ovirt-disk.h>
++#include <rest/rest-xml-node.h>
++
++G_BEGIN_DECLS
++
++OvirtDisk *ovirt_disk_new_from_id(const char *id,
++                                  const char *href);
++OvirtDisk *ovirt_disk_new_from_xml(RestXmlNode *node,
++                                   GError **error);
++
++G_END_DECLS
++
++#endif /* __OVIRT_DISK_PRIVATE_H__ */
+diff --git a/govirt/ovirt-disk.c b/govirt/ovirt-disk.c
+new file mode 100644
+index 0000000..9242c4c
+--- /dev/null
++++ b/govirt/ovirt-disk.c
+@@ -0,0 +1,144 @@
++/*
++ * ovirt-disk.c: oVirt disk handling
++ *
++ * Copyright (C) 2020 Red Hat, Inc.
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library. If not, see
++ * <http://www.gnu.org/licenses/>.
++ *
++ * Author: Eduardo Lima (Etrunko) <etrunko@redhat.com>
++ */
++
++#include <config.h>
++#include "ovirt-enum-types.h"
++#include "ovirt-disk.h"
++#include "govirt-private.h"
++
++struct _OvirtDiskPrivate {
++    OvirtDiskContentType content_type;
++};
++
++G_DEFINE_TYPE_WITH_PRIVATE(OvirtDisk, ovirt_disk, OVIRT_TYPE_RESOURCE);
++
++enum {
++    PROP_0,
++    PROP_CONTENT_TYPE,
++};
++
++static void ovirt_disk_get_property(GObject *object,
++                                    guint prop_id,
++                                    GValue *value,
++                                    GParamSpec *pspec)
++{
++    OvirtDisk *disk = OVIRT_DISK(object);
++
++    switch (prop_id) {
++    case PROP_CONTENT_TYPE:
++        g_value_set_enum(value, disk->priv->content_type);
++        break;
++    default:
++        G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
++        break;
++    }
++}
++
++static void ovirt_disk_set_property(GObject *object,
++                                    guint prop_id,
++                                    const GValue *value,
++                                    GParamSpec *pspec)
++{
++    OvirtDisk *disk = OVIRT_DISK(object);
++
++    switch (prop_id) {
++    case PROP_CONTENT_TYPE:
++        disk->priv->content_type = g_value_get_enum(value);
++        break;
++    default:
++        G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
++        break;
++    }
++}
++
++static gboolean ovirt_disk_init_from_xml(OvirtResource *resource,
++                                         RestXmlNode *node,
++                                         GError **error)
++{
++    gboolean parsed_ok;
++    OvirtResourceClass *parent_class;
++    OvirtXmlElement disk_elements[] = {
++        { .prop_name = "content_type",
++          .xml_path = "content_type",
++        },
++        { NULL , }
++    };
++
++    parsed_ok = ovirt_rest_xml_node_parse(node, G_OBJECT(resource), disk_elements);
++    if (!parsed_ok) {
++        return FALSE;
++    }
++    parent_class = OVIRT_RESOURCE_CLASS(ovirt_disk_parent_class);
++
++    return parent_class->init_from_xml(resource, node, error);
++}
++
++static void ovirt_disk_class_init(OvirtDiskClass *klass)
++{
++    GObjectClass *object_class = G_OBJECT_CLASS(klass);
++    OvirtResourceClass *resource_class = OVIRT_RESOURCE_CLASS(klass);
++    GParamSpec *param_spec;
++
++    resource_class->init_from_xml = ovirt_disk_init_from_xml;
++
++    object_class->get_property = ovirt_disk_get_property;
++    object_class->set_property = ovirt_disk_set_property;
++
++    param_spec = g_param_spec_enum("type",
++                                   "Content Type",
++                                   "The actual content residing on the disk",
++                                   OVIRT_TYPE_DISK_CONTENT_TYPE,
++                                   OVIRT_DISK_CONTENT_TYPE_DATA,
++                                   G_PARAM_READWRITE |
++                                   G_PARAM_STATIC_STRINGS);
++    g_object_class_install_property(object_class,
++                                    PROP_CONTENT_TYPE,
++                                    param_spec);
++}
++
++
++static void ovirt_disk_init(OvirtDisk *disk)
++{
++    disk->priv = ovirt_disk_get_instance_private(disk);
++}
++
++G_GNUC_INTERNAL
++OvirtDisk *ovirt_disk_new_from_id(const char *id,
++                                  const char *href)
++{
++    OvirtResource *disk = ovirt_resource_new_from_id(OVIRT_TYPE_DISK, id, href);
++    return OVIRT_DISK(disk);
++}
++
++G_GNUC_INTERNAL
++OvirtDisk *ovirt_disk_new_from_xml(RestXmlNode *node,
++                                   GError **error)
++{
++    OvirtResource *disk = ovirt_resource_new_from_xml(OVIRT_TYPE_DISK, node, error);
++    return OVIRT_DISK(disk);
++}
++
++OvirtDisk *ovirt_disk_new(void)
++{
++    OvirtResource *disk = ovirt_resource_new(OVIRT_TYPE_DISK);
++    return OVIRT_DISK(disk);
++}
+diff --git a/govirt/ovirt-disk.h b/govirt/ovirt-disk.h
+new file mode 100644
+index 0000000..a0bdd5a
+--- /dev/null
++++ b/govirt/ovirt-disk.h
+@@ -0,0 +1,76 @@
++/*
++ * ovirt-disk.h: oVirt disk resource
++ *
++ * Copyright (C) 2020 Red Hat, Inc.
++ *
++ * This library is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * This library is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with this library. If not, see
++ * <http://www.gnu.org/licenses/>.
++ *
++ * Author: Eduardo Lima (Etrunko) <etrunko@redhat.com>
++ */
++#ifndef __OVIRT_DISK_H__
++#define __OVIRT_DISK_H__
++
++#include <gio/gio.h>
++#include <glib-object.h>
++#include <govirt/ovirt-resource.h>
++#include <govirt/ovirt-types.h>
++
++G_BEGIN_DECLS
++
++#define OVIRT_TYPE_DISK            (ovirt_disk_get_type ())
++#define OVIRT_DISK(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), OVIRT_TYPE_DISK, OvirtDisk))
++#define OVIRT_DISK_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass), OVIRT_TYPE_DISK, OvirtDiskClass))
++#define OVIRT_IS_DISK(obj)         (G_TYPE_CHECK_INSTANCE_TYPE ((obj), OVIRT_TYPE_DISK))
++#define OVIRT_IS_DISK_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE ((klass), OVIRT_TYPE_DISK))
++#define OVIRT_DISK_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj), OVIRT_TYPE_DISK, OvirtDiskClass))
++
++typedef enum {
++    OVIRT_DISK_CONTENT_TYPE_DATA,
++    OVIRT_DISK_CONTENT_TYPE_HOSTED_ENGINE,
++    OVIRT_DISK_CONTENT_TYPE_HOSTED_ENGINE_CONFIGURATION,
++    OVIRT_DISK_CONTENT_TYPE_HOSTED_ENGINE_METADATA,
++    OVIRT_DISK_CONTENT_TYPE_HOSTED_ENGINE_SANLOCK,
++    OVIRT_DISK_CONTENT_TYPE_ISO,
++    OVIRT_DISK_CONTENT_TYPE_MEMORY_DUMP_VOLUME,
++    OVIRT_DISK_CONTENT_TYPE_METADATA_VOLUME,
++    OVIRT_DISK_CONTENT_TYPE_OVF_STORE,
++} OvirtDiskContentType;
++
++typedef struct _OvirtDiskPrivate OvirtDiskPrivate;
++typedef struct _OvirtDiskClass OvirtDiskClass;
++
++struct _OvirtDisk
++{
++    OvirtResource parent;
++
++    OvirtDiskPrivate *priv;
++
++    /* Do not add fields to this struct */
++};
++
++struct _OvirtDiskClass
++{
++    OvirtResourceClass parent_class;
++
++    gpointer padding[20];
++};
++
++GType ovirt_disk_get_type(void);
++
++OvirtDisk *ovirt_disk_new(void);
++
++G_END_DECLS
++
++#endif /* __OVIRT_DISK_H__ */
+diff --git a/govirt/ovirt-types.h b/govirt/ovirt-types.h
+index eb85fd6..3c05d36 100644
+--- a/govirt/ovirt-types.h
++++ b/govirt/ovirt-types.h
+@@ -29,6 +29,7 @@ typedef struct _OvirtApi OvirtApi;
+ typedef struct _OvirtCdrom OvirtCdrom;
+ typedef struct _OvirtCluster OvirtCluster;
+ typedef struct _OvirtCollection OvirtCollection;
++typedef struct _OvirtDisk OvirtDisk;
+ typedef struct _OvirtDataCenter OvirtDataCenter;
+ typedef struct _OvirtHost OvirtHost;
+ typedef struct _OvirtProxy OvirtProxy;
+-- 
+2.26.2
+
